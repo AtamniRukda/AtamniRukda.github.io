@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nepal - Neon Map Intro 1080p (Video Generator)</title>
+<style>
+  html,body{margin:0;padding:0;background:#080604;color:#d8ccc0;font-family:Georgia,serif;}
+  body{display:flex;flex-direction:column;align-items:center;min-height:100vh;}
+  #hdr{margin:10px 0 6px;font-size:14px;letter-spacing:3px;text-transform:uppercase;color:#a8845c;}
+  #stage{line-height:0;}
+  canvas{width:min(92vw,calc(76vh*1.7778));height:auto;background:#000;box-shadow:0 10px 44px rgba(0,0,0,.75);}
+  #bar{display:flex;align-items:center;gap:8px;width:min(92vw,1000px);margin:10px 0 18px;
+       background:#161009;border:1px solid #3a2c1c;border-radius:10px;padding:10px 12px;}
+  button{font-family:Georgia,serif;font-size:14px;padding:7px 14px;border-radius:7px;cursor:pointer;
+         background:#241a10;color:#e8dcc8;border:1px solid #4a3822;}
+  button:hover{background:#302416;}
+  button.rec-on{background:#5a1712;border-color:#8a2f24;color:#ffd9cf;}
+  input[type=range]{flex:1;accent-color:#4d8dff;}
+  #timeLbl{font-size:13px;color:#b09878;min-width:96px;text-align:center;}
+  #recState{font-size:12px;color:#ff6f61;min-width:48px;letter-spacing:2px;}
+  .blink{animation:bl 1s steps(2) infinite;}
+  @keyframes bl{50%{opacity:.15;}}
+</style>
+</head>
+<body>
+<div id="hdr">Nepal &middot; neon map intro &middot; 1080p &middot; cinematic camera &middot; video generator</div>
+<div id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+<div id="bar">
+  <button id="btnPlay">&#9654; Play</button>
+  <button id="btnReset">Reset</button>
+  <input id="scrub" type="range" min="0" max="800" step="1" value="0">
+  <span id="timeLbl">0:00 / 0:08</span>
+  <button id="btnRec">&#9679; Record</button>
+  <span id="recState"></span>
+</div>
+<script>
+'use strict';
+/* ============================================================
+   NEPAL - NEON MAP INTRO (8s, 1920x1080)
+   dark grunge world surface -> neon blue outline draws with
+   electric particles -> textured Nepal flag fill (crimson
+   double-pennant, blue border, moon + sun) wipes top-down.
+   dynamic camera: push, west-to-east Himalaya sweep, pull-back,
+   hero detail, settle. no text on screen. pure function of t.
+   ============================================================ */
+const W = 1920, H = 1080, DUR = 8;
+const RES = W / 1920;                 /* resolution scale factor */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const TAU = Math.PI * 2;
+const NEON='#4d8dff', NEON_CORE='#d8e6ff';
+const clamp=(v,a,b)=> v<a?a : v>b?b : v;
+const lerp=(a,b,u)=> a+(b-a)*u;
+const seg=(t,a,b)=> b<=a ? (t>=b?1:0) : clamp((t-a)/(b-a),0,1);
+const easeIO=u=>{ u=clamp(u,0,1); return u<.5 ? 4*u*u*u : 1-Math.pow(-2*u+2,3)/2; };
+function hash(n){ const s=Math.sin(n*127.1+311.7)*43758.5453; return s-Math.floor(s); }
+function fmt(s){ s=Math.max(0,s); const m=Math.floor(s/60), ss=Math.floor(s%60); return m+':'+String(ss).padStart(2,'0'); }
+
+/* ---------------- nepal border polygon (lon,lat) ----------------
+   real border data (Natural-Earth-derived, DP-simplified):
+   full arc - Kanchanpur to Kanchenjunga along the Himalaya. */
+const NPL=[
+[81.619,30.445],[81.613,30.413],[81.556,30.429],[81.557,30.373],[81.407,30.417],
+[81.431,30.378],[81.402,30.369],[81.421,30.307],[81.394,30.202],[81.332,30.151],
+[81.255,30.146],[81.286,30.113],[81.252,30.020],[81.134,30.013],[81.091,30.057],
+[81.111,30.093],[81.076,30.106],[81.087,30.156],[81.035,30.198],[80.934,30.180],
+[80.918,30.226],[80.863,30.168],[80.873,30.131],[80.741,30.003],[80.611,29.960],
+[80.483,29.797],[80.434,29.800],[80.366,29.742],[80.419,29.652],[80.408,29.612],
+[80.288,29.479],[80.303,29.453],[80.243,29.442],[80.314,29.310],[80.291,29.195],
+[80.244,29.201],[80.276,29.140],[80.180,29.132],[80.137,29.074],[80.122,28.988],
+[80.061,28.916],[80.070,28.825],[80.263,28.753],[80.375,28.628],[80.469,28.618],
+[80.516,28.548],[80.501,28.663],[80.542,28.692],[80.776,28.539],[80.896,28.506],
+[80.949,28.439],[81.193,28.370],[81.322,28.175],[81.318,28.131],[81.369,28.141],
+[81.383,28.176],[81.447,28.156],[81.476,28.084],[81.698,27.987],[81.888,27.860],
+[81.921,27.857],[81.966,27.930],[82.066,27.924],[82.411,27.693],[82.476,27.675],
+[82.706,27.719],[82.757,27.587],[82.734,27.506],[82.923,27.502],[82.951,27.466],
+[83.037,27.450],[83.186,27.455],[83.302,27.333],[83.386,27.383],[83.389,27.480],
+[83.621,27.471],[83.856,27.349],[83.881,27.379],[83.849,27.439],[84.030,27.436],
+[84.104,27.516],[84.150,27.516],[84.210,27.439],[84.260,27.447],[84.290,27.389],
+[84.619,27.338],[84.692,27.217],[84.640,27.055],[84.792,26.994],[84.827,27.021],
+[84.961,26.959],[84.998,26.891],[85.058,26.885],[85.029,26.856],[85.195,26.868],
+[85.181,26.814],[85.209,26.758],[85.335,26.744],[85.629,26.873],[85.708,26.830],
+[85.736,26.787],[85.732,26.668],[85.768,26.628],[85.851,26.609],[85.853,26.563],
+[85.956,26.654],[86.034,26.663],[86.233,26.591],[86.343,26.620],[86.743,26.423],
+[86.896,26.474],[86.895,26.506],[87.010,26.531],[87.052,26.586],[87.090,26.452],
+[87.166,26.405],[87.262,26.408],[87.266,26.371],[87.352,26.350],[87.361,26.413],
+[87.447,26.435],[87.553,26.420],[87.595,26.382],[87.679,26.435],[87.757,26.413],
+[87.800,26.466],[87.841,26.439],[87.888,26.471],[88.032,26.360],[88.032,26.394],
+[88.092,26.428],[88.102,26.557],[88.190,26.741],[88.119,26.955],[88.141,26.983],
+[88.083,27.037],[88.046,27.033],[87.988,27.114],[88.065,27.334],[88.046,27.368],
+[88.077,27.429],[88.038,27.483],[88.156,27.691],[88.201,27.849],[88.135,27.882],
+[88.102,27.863],[88.082,27.897],[87.865,27.913],[87.832,27.947],[87.731,27.805],
+[87.665,27.811],[87.671,27.834],[87.609,27.816],[87.560,27.867],[87.450,27.821],
+[87.407,27.834],[87.428,27.860],[87.314,27.828],[87.255,27.849],[87.222,27.818],
+[87.116,27.851],[87.034,27.952],[86.938,27.960],[86.865,28.025],[86.755,28.034],
+[86.752,28.089],[86.721,28.106],[86.635,28.071],[86.561,28.112],[86.565,28.059],
+[86.510,27.956],[86.409,27.909],[86.335,27.969],[86.318,27.947],[86.229,27.977],
+[86.192,28.171],[86.120,28.090],[86.087,28.095],[86.081,28.019],[86.127,27.929],
+[85.980,27.918],[85.950,27.953],[85.975,27.997],[85.894,28.057],[85.903,28.107],
+[85.853,28.181],[85.758,28.228],[85.708,28.385],[85.611,28.252],[85.592,28.308],
+[85.498,28.332],[85.415,28.327],[85.372,28.277],[85.122,28.338],[85.103,28.455],
+[85.184,28.539],[85.188,28.646],[85.053,28.681],[84.992,28.599],[84.858,28.575],
+[84.695,28.633],[84.702,28.673],[84.628,28.738],[84.490,28.736],[84.437,28.770],
+[84.412,28.852],[84.225,28.894],[84.251,29.035],[84.190,29.048],[84.205,29.126],
+[84.172,29.139],[84.165,29.198],[84.198,29.243],[84.114,29.246],[84.089,29.295],
+[83.900,29.322],[83.811,29.300],[83.797,29.252],[83.720,29.242],[83.640,29.162],
+[83.574,29.179],[83.438,29.309],[83.423,29.405],[83.364,29.432],[83.340,29.495],
+[83.267,29.502],[83.250,29.556],[83.285,29.562],[83.213,29.608],[83.088,29.607],
+[83.002,29.669],[82.952,29.665],[82.941,29.701],[82.845,29.684],[82.752,29.767],
+[82.693,29.766],[82.734,29.817],[82.704,29.851],[82.639,29.835],[82.645,29.872],
+[82.561,29.956],[82.499,29.948],[82.334,30.048],[82.174,30.063],[82.172,30.126],
+[82.207,30.151],[82.104,30.233],[82.105,30.347],[82.060,30.362],[82.058,30.337],
+[81.995,30.323],[81.697,30.420]];
+/* project to world pixels (equirectangular, lon scaled by cos mid-lat) */
+let _lo1=1e9,_lo2=-1e9,_la1=1e9,_la2=-1e9;
+NPL.forEach(p=>{ _lo1=Math.min(_lo1,p[0]); _lo2=Math.max(_lo2,p[0]);
+                 _la1=Math.min(_la1,p[1]); _la2=Math.max(_la2,p[1]); });
+const LONMIN=_lo1,LONMAX=_lo2,LATMIN=_la1,LATMAX=_la2,MIDLAT=(_la1+_la2)/2;
+const KX=Math.cos(MIDLAT*Math.PI/180);
+const MAPS=(880*RES)/(_la2-_la1);    /* fit map height ~81% of frame */
+const MAPW=(LONMAX-LONMIN)*KX*MAPS, MAPH=(LATMAX-LATMIN)*MAPS;
+const PX=NPL.map(p=>[ (p[0]-LONMIN)*KX*MAPS, (LATMAX-p[1])*MAPS ]);
+let BB={x:1e9,y:1e9,x2:-1e9,y2:-1e9};
+PX.forEach(p=>{ BB.x=Math.min(BB.x,p[0]); BB.y=Math.min(BB.y,p[1]);
+                BB.x2=Math.max(BB.x2,p[0]); BB.y2=Math.max(BB.y2,p[1]); });
+const MAPCX=(BB.x+BB.x2)/2, MAPCY=(BB.y+BB.y2)/2;
+/* cumulative lengths for progressive draw */
+const SEGL=[]; let PERIM=0;
+for(let i=0;i<PX.length;i++){
+  const a=PX[i], b=PX[(i+1)%PX.length];
+  const l=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  SEGL.push(l); PERIM+=l;
+}
+function pathUpTo(g,frac){
+  let rem=frac*PERIM;
+  g.moveTo(PX[0][0],PX[0][1]);
+  let head=[PX[0][0],PX[0][1]];
+  for(let i=0;i<PX.length;i++){
+    const l=SEGL[i];
+    if(rem>=l){ g.lineTo(PX[(i+1)%PX.length][0],PX[(i+1)%PX.length][1]);
+      head=PX[(i+1)%PX.length]; rem-=l; }
+    else{ const f=l>0?rem/l:0;
+      const hx=lerp(PX[i][0],PX[(i+1)%PX.length][0],f);
+      const hy=lerp(PX[i][1],PX[(i+1)%PX.length][1],f);
+      g.lineTo(hx,hy); head=[hx,hy]; rem=0; break; }
+  }
+  return head;
+}
+function pathAll(g){ g.moveTo(PX[0][0],PX[0][1]);
+  for(let i=1;i<PX.length;i++) g.lineTo(PX[i][0],PX[i][1]); g.closePath(); }
+
+/* ---------------- camera keyframes [t, zoom, cxF, cyF, rotDeg] ----------------
+   cx/cy are fractions of map height (resolution-independent) */
+const CAMK=[
+ [0.0,0.94, 0.00, 0.00,  0.0],
+ [2.0,1.12,-0.22, 0.04, -2.2],
+ [4.6,1.30, 0.24,-0.02,  2.4],
+ [5.6,1.02, 0.00, 0.01,  0.0],
+ [7.0,1.25, 0.00, 0.02, -1.6],
+ [8.0,1.08, 0.00, 0.00,  0.0]
+];
+function camera(t){
+  let a=CAMK[0], b=CAMK[CAMK.length-1];
+  for(let i=0;i<CAMK.length-1;i++){
+    if(t>=CAMK[i][0]&&t<=CAMK[i+1][0]){ a=CAMK[i]; b=CAMK[i+1]; break; }
+  }
+  const u=easeIO((t-a[0])/Math.max(.0001,b[0]-a[0]));
+  const fl=Math.sin(t*.5)*6*RES+Math.sin(t*1.3)*2*RES;
+  return { z:lerp(a[1],b[1],u),
+           cx:lerp(a[2],b[2],u)*MAPH+fl,
+           cy:lerp(a[3],b[3],u)*MAPH+Math.cos(t*.37)*5*RES,
+           rot:(lerp(a[4],b[4],u)+Math.sin(t*.23)*.14)*Math.PI/180 };
+}
+/* ---------------- grunge world backdrop (offscreen, drawn once) ---------------- */
+const BGW=Math.round(W*1.5),BGH=Math.round(H*1.5);
+const bg=document.createElement('canvas'); bg.width=BGW; bg.height=BGH;
+(function(){
+  const g=bg.getContext('2d');
+  g.fillStyle='#0a0806'; g.fillRect(0,0,BGW,BGH);
+  /* mottled grunge */
+  for(let i=0;i<4200;i++){
+    const x=hash(i*3+1)*BGW, y=hash(i*3+2)*BGH, r=8+hash(i*3+3)*70;
+    g.globalAlpha=.015+hash(i*7)*.04;
+    g.fillStyle=hash(i*11)>.5?'#000':'#241a10';
+    g.beginPath(); g.ellipse(x,y,r,r*.6,hash(i)*TAU,0,TAU); g.fill();
+  }
+  /* faint continents (very rough blobs, barely visible) */
+  function blob(pts){
+    g.beginPath();
+    pts.forEach((p,i)=>{ const x=(p[0]+180)*(BGW/360), y=(84-p[1])*(BGH/144);
+      if(i===0)g.moveTo(x,y); else g.lineTo(x,y); });
+    g.closePath(); g.fill();
+  }
+  g.fillStyle='rgba(150,125,95,.055)';
+  blob([[-168,66],[-140,70],[-120,72],[-95,73],[-75,70],[-60,62],[-55,50],[-65,44],
+        [-75,35],[-81,25],[-97,25],[-105,20],[-115,30],[-125,40],[-130,55],[-150,60]]);
+  blob([[-80,10],[-60,12],[-50,0],[-35,-8],[-40,-22],[-58,-35],[-70,-52],[-75,-40],
+        [-70,-18],[-80,0]]);
+  blob([[-10,36],[3,43],[12,44],[20,40],[28,41],[38,48],[30,60],[20,66],[10,64],[0,58],[-8,52]]);
+  blob([[-17,15],[-10,32],[0,36],[12,34],[25,32],[35,30],[43,12],[52,12],[42,-5],
+        [35,-25],[25,-34],[18,-34],[12,-18],[8,4],[-8,5]]);
+  blob([[30,60],[40,66],[60,70],[80,72],[100,75],[120,72],[140,70],[160,66],[170,62],
+        [160,58],[142,50],[130,42],[122,30],[110,18],[100,10],[95,15],[88,20],[80,12],
+        [72,20],[62,24],[55,26],[48,30],[40,38],[32,45]]);
+  blob([[35,30],[45,28],[55,25],[58,20],[52,15],[43,12],[38,20]]);
+  blob([[114,-22],[122,-14],[132,-11],[142,-11],[150,-22],[153,-30],[146,-39],
+        [135,-35],[125,-33],[115,-30]]);
+  blob([[-45,60],[-30,68],[-22,76],[-40,80],[-55,76],[-52,66]]);
+  /* graticule */
+  g.globalAlpha=1;
+  g.strokeStyle='rgba(190,160,120,.045)'; g.lineWidth=RES;
+  const step=120*RES;
+  for(let x=0;x<=BGW;x+=step){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,BGH); g.stroke(); }
+  for(let y=0;y<=BGH;y+=step){ g.beginPath(); g.moveTo(0,y); g.lineTo(BGW,y); g.stroke(); }
+  /* scratches */
+  g.strokeStyle='rgba(0,0,0,.10)'; g.lineWidth=1.2*RES;
+  for(let i=0;i<140;i++){
+    const x=hash(i*13+4)*BGW,y=hash(i*13+5)*BGH,a=hash(i*13+6)*TAU,l=(40+hash(i*13+7)*160)*RES;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+Math.cos(a)*l,y+Math.sin(a)*l); g.stroke();
+  }
+})();
+/* ---------------- textured flag (offscreen, drawn once) ---------------- */
+const PAD=40*RES;
+const FW=Math.ceil(BB.x2-BB.x)+PAD*2, FH=Math.ceil(BB.y2-BB.y)+PAD*2;
+const flag=document.createElement('canvas'); flag.width=FW; flag.height=FH;
+(function(){
+  const g=flag.getContext('2d');
+  const gx=PAD, gy=PAD, gw=FW-PAD*2, gh=FH-PAD*2;
+  /* Nepal double-pennant flag: crimson field, blue border,
+     white moon (upper) + white sun (lower). backdrop fills the
+     rest of the map area with deep crimson shadow. */
+  g.fillStyle='#2e0a14'; g.fillRect(gx,gy,gw,gh);
+  const fh=gh*.94, fw=fh*.80;
+  const fx0=gx+(gw-fw)/2, fy0=gy+(gh-fh)/2;
+  const P=[[0,0],[fw*.94,fh*.42],[fw*.30,fh*.50],[fw,fh*.88],[0,fh]];
+  function penn(ox,oy,sc){
+    g.beginPath();
+    P.forEach((p,i)=>{ const x=fx0+ox+p[0]*sc, y=fy0+oy+p[1]*sc;
+      if(i===0)g.moveTo(x,y); else g.lineTo(x,y); });
+    g.closePath();
+  }
+  /* blue border (slightly larger silhouette behind) */
+  g.fillStyle='#003893';
+  penn(-fh*.016,-fh*.016,1.032); g.fill();
+  /* crimson field */
+  g.fillStyle='#d01235';
+  penn(0,0,1); g.fill();
+  /* white crescent moon - upper pennant */
+  const mx=fx0+fw*.34, my=fy0+fh*.27, mr=fh*.075;
+  g.fillStyle='#f2efe4';
+  g.beginPath(); g.arc(mx,my,mr,0,TAU,false);
+  g.arc(mx+mr*.38,my-mr*.12,mr*.82,0,TAU,true); g.fill();
+  /* white sun with rays - lower pennant */
+  const sx=fx0+fw*.32, sy=fy0+fh*.68, sr=fh*.062;
+  g.beginPath(); g.arc(sx,sy,sr*.62,0,TAU); g.fill();
+  for(let i=0;i<12;i++){
+    const a=i*TAU/12;
+    g.beginPath();
+    g.moveTo(sx+Math.cos(a-.10)*sr*.62, sy+Math.sin(a-.10)*sr*.62);
+    g.lineTo(sx+Math.cos(a)*sr*1.18, sy+Math.sin(a)*sr*1.18);
+    g.lineTo(sx+Math.cos(a+.10)*sr*.62, sy+Math.sin(a+.10)*sr*.62);
+    g.closePath(); g.fill();
+  }
+  /* fabric folds */
+  for(let i=0;i<10;i++){
+    const fx=gx+gw*(i+.5)/10, w=64*RES;
+    const fg=g.createLinearGradient(fx-w,0,fx+w,0);
+    fg.addColorStop(0,'rgba(0,0,0,0)'); fg.addColorStop(.5,'rgba(0,0,0,.14)');
+    fg.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=fg; g.fillRect(fx-w,gy,w*2,gh);
+  }
+  /* grunge blotches */
+  for(let i=0;i<1700;i++){
+    const x=gx+hash(i*5+11)*gw, y=gy+hash(i*5+12)*gh, r=(2+hash(i*5+13)*26)*RES;
+    g.globalAlpha=.02+hash(i*5+14)*.06;
+    g.fillStyle=hash(i*5+15)>.35?'rgba(0,0,0,1)':'rgba(240,235,245,1)';
+    g.beginPath(); g.ellipse(x,y,r,r*.55,hash(i*5+16)*TAU,0,TAU); g.fill();
+  }
+  g.globalAlpha=1;
+  /* edge wear */
+  g.strokeStyle='rgba(0,0,0,.25)'; g.lineWidth=3*RES;
+  g.strokeRect(gx+1.5*RES,gy+1.5*RES,gw-3*RES,gh-3*RES);
+})();
+/* ---------------- grain ---------------- */
+let grainPat=null;
+(function(){ const g=document.createElement('canvas'); g.width=g.height=256;
+  const gc=g.getContext('2d');
+  for(let i=0;i<1700;i++){ gc.globalAlpha=.05; gc.fillStyle=hash(i)>.5?'#000':'#fff';
+    gc.fillRect(hash(i+9)*256,hash(i+77)*256,1.5,1.5); }
+  grainPat=ctx.createPattern(g,'repeat');
+})();
+/* ---------------- neon stroke helper (layered, Path2D-based) ------------- */
+function neonStroke(path,widthCore){
+  const wc=widthCore||2.4*RES;
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.strokeStyle='rgba(77,141,255,.14)'; ctx.lineWidth=wc+14*RES; ctx.stroke(path);
+  ctx.strokeStyle='rgba(77,141,255,.40)'; ctx.lineWidth=wc+5*RES;  ctx.stroke(path);
+  ctx.strokeStyle=NEON_CORE;             ctx.lineWidth=wc;        ctx.stroke(path);
+  ctx.strokeStyle='rgba(240,246,255,.9)';ctx.lineWidth=wc*.45;    ctx.stroke(path);
+  ctx.restore();
+}
+/* ---------------- master render ---------------- */
+function render(t){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle='#080604'; ctx.fillRect(0,0,W,H);
+  const cam=camera(t);
+  ctx.save();
+  ctx.translate(W/2,H/2); ctx.rotate(cam.rot); ctx.scale(cam.z,cam.z);
+  ctx.translate(-W/2-cam.cx,-H/2-cam.cy);
+  /* backdrop (world-sized) */
+  ctx.drawImage(bg,-(BGW-W)/2,-(BGH-H)/2);
+  /* map space */
+  ctx.save();
+  ctx.translate(W/2-MAPCX, H/2-MAPCY);
+  const drawProg=easeIO(seg(t,.5,4.4));
+  const fillProg=easeIO(seg(t,5.6,7.0));
+  /* dim under-fill so interior isn't pure void before flag */
+  if(fillProg>0){
+    ctx.save(); pathAll(ctx);
+    ctx.fillStyle='rgba(26,14,32,'+(.85*fillProg)+')'; ctx.fill();
+    ctx.restore();
+  }
+  /* flag fill: vertical wipe - moon first, then sun */
+  if(fillProg>0){
+    const d={x:.12,y:.99};
+    const dl=Math.hypot(d.x,d.y); d.x/=dl; d.y/=dl;
+    const corners=[[BB.x-PAD,BB.y-PAD],[BB.x2+PAD,BB.y-PAD],[BB.x2+PAD,BB.y2+PAD],[BB.x-PAD,BB.y2+PAD]];
+    let pmin=1e18,pmax=-1e18;
+    corners.forEach(c=>{ const p=c[0]*d.x+c[1]*d.y; pmin=Math.min(pmin,p); pmax=Math.max(pmax,p); });
+    const band=70*RES;
+    const f=lerp(pmin-60*RES,pmax+140*RES,fillProg);
+    /* masked flag */
+    const mc=render._mc||(render._mc=document.createElement('canvas'));
+    if(mc.width!==FW||mc.height!==FH){ mc.width=FW; mc.height=FH; }
+    const mg=mc.getContext('2d');
+    mg.setTransform(1,0,0,1,0,0);
+    mg.clearRect(0,0,FW,FH);
+    mg.drawImage(flag,0,0);
+    mg.globalCompositeOperation='destination-in';
+    const bx0=BB.x-PAD, by0=BB.y-PAD, base=bx0*d.x+by0*d.y;
+    const lg=mg.createLinearGradient(
+      bx0+((f-band)-base)*d.x, by0+((f-band)-base)*d.y,
+      bx0+((f+band)-base)*d.x, by0+((f+band)-base)*d.y);
+    lg.addColorStop(0,'rgba(0,0,0,1)'); lg.addColorStop(1,'rgba(0,0,0,0)');
+    mg.fillStyle=lg; mg.fillRect(0,0,FW,FH);
+    mg.globalCompositeOperation='source-over';
+    ctx.save(); pathAll(ctx); ctx.clip();
+    ctx.drawImage(mc,BB.x-PAD,BB.y-PAD);
+    /* bright leading edge */
+    if(fillProg<.995){
+      const pe={x:-d.y,y:d.x}, L=MAPW*2.2;
+      const fE=f-band;
+      const ex=bx0+(fE-base)*d.x, ey=by0+(fE-base)*d.y;
+      ctx.strokeStyle='rgba(77,141,255,'+(.30*(1-fillProg*.65))+')';
+      ctx.lineWidth=9*RES;
+      ctx.beginPath(); ctx.moveTo(ex-pe.x*L,ey-pe.y*L); ctx.lineTo(ex+pe.x*L,ey+pe.y*L);
+      ctx.stroke();
+      ctx.strokeStyle='rgba(220,232,255,'+(.75*(1-fillProg*.65))+')';
+      ctx.lineWidth=3*RES;
+      ctx.beginPath(); ctx.moveTo(ex-pe.x*L,ey-pe.y*L); ctx.lineTo(ex+pe.x*L,ey+pe.y*L);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  /* completion flash */
+  const fl=Math.max(0,1-Math.abs(t-4.5)/.55);
+  if(fl>0){
+    const fg=ctx.createRadialGradient(W/2,H/2,60*RES,W/2,H/2,760*RES);
+    fg.addColorStop(0,'rgba(150,180,255,'+(.28*fl)+')');
+    fg.addColorStop(1,'rgba(77,141,255,0)');
+    ctx.fillStyle=fg; ctx.fillRect(-800,-800,W+1600,H+1600);
+    ctx.save();
+    ctx.strokeStyle='rgba(170,195,255,'+(.55*fl)+')';
+    ctx.lineWidth=2.5*RES;
+    ctx.beginPath(); ctx.arc(W/2,H/2,760*RES*(1-fl*.6),0,TAU); ctx.stroke();
+    ctx.restore();
+  }
+  /* electric ghost crawl (after outline exists) */
+  if(drawProg>.05){
+    const ga=(.16+.10*Math.sin(t*2.2))*Math.min(1,drawProg*2);
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    ctx.strokeStyle='rgba(77,141,255,'+ga+')'; ctx.lineWidth=1.6*RES;
+    ctx.beginPath();
+    const seed=Math.floor(t*14);
+    for(let i=0;i<PX.length;i+=3){
+      const jx=(hash(i*7+seed)-.5)*4.4*RES, jy=(hash(i*7+seed+31)-.5)*4.4*RES;
+      if(i===0)ctx.moveTo(PX[0][0]+jx,PX[0][1]+jy);
+      else ctx.lineTo(PX[i][0]+jx,PX[i][1]+jy);
+    }
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
+  }
+  /* main neon outline (progressive; full path cached as Path2D) */
+  let head=null;
+  if(drawProg<1){
+    const pp=new Path2D();
+    head=pathUpTo(pp,drawProg);
+    neonStroke(pp,2.4*RES);
+  } else {
+    if(!render._fp){ render._fp=new Path2D(); pathAll(render._fp); }
+    neonStroke(render._fp,2.4*RES);
+    head=null;
+    /* random segment flickers */
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    const seed=Math.floor(t*9);
+    for(let k=0;k<6;k++){
+      const i=Math.floor(hash(k*3+seed)*PX.length);
+      const a=PX[i], b=PX[(i+1)%PX.length];
+      ctx.strokeStyle='rgba(200,220,255,'+(.25+.55*hash(k+seed*7))+')';
+      ctx.lineWidth=3*RES;
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  /* draw-head sparks */
+  if(drawProg>0&&drawProg<1&&head){
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    for(let i=0;i<18;i++){
+      const a=hash(i*17+Math.floor(t*30))*TAU;
+      const r=(3+hash(i*17+1+Math.floor(t*30))*30)*RES;
+      const px=head[0]+Math.cos(a)*r, py=head[1]+Math.sin(a)*r;
+      const al=(1-r/(34*RES))*.8;
+      ctx.fillStyle='rgba(220,232,255,'+al+')';
+      ctx.beginPath(); ctx.arc(px,py,(1.6+hash(i)*2)*RES,0,TAU); ctx.fill();
+    }
+    const hg=ctx.createRadialGradient(head[0],head[1],0,head[0],head[1],26*RES);
+    hg.addColorStop(0,'rgba(225,236,255,.95)'); hg.addColorStop(1,'rgba(77,141,255,0)');
+    ctx.fillStyle=hg;
+    ctx.beginPath(); ctx.arc(head[0],head[1],26*RES,0,TAU); ctx.fill();
+    ctx.restore();
+  }
+  /* ambient motes near border */
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<30;i++){
+    const idx=Math.floor(hash(i*29)*PX.length);
+    const ph=(t*.14+hash(i*31))%1;
+    const px=PX[idx][0]+(hash(i*37)-.5)*46*RES+Math.sin(t*.8+i)*7*RES;
+    const py=PX[idx][1]+(hash(i*41)-.5)*46*RES+Math.cos(t*.7+i*2)*7*RES;
+    ctx.fillStyle='rgba(77,141,255,'+(.30*Math.sin(ph*Math.PI))+')';
+    ctx.beginPath(); ctx.arc(px,py,1.8*RES,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+  ctx.restore(); /* map space */
+  ctx.restore(); /* camera */
+  /* vignette + grain + fades (screen space) */
+  const vg=ctx.createRadialGradient(W/2,H/2,H*.42,W/2,H/2,H*.92);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.62)');
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  if(grainPat){ ctx.save(); ctx.globalAlpha=.35; ctx.fillStyle=grainPat;
+    ctx.fillRect(0,0,W,H); ctx.restore(); }
+  const fa=Math.max(1-seg(t,0,.6),seg(t,7.5,8));
+  if(fa>0){ ctx.fillStyle='rgba(0,0,0,'+fa+')'; ctx.fillRect(0,0,W,H); }
+}
+/* ---------------- controls ---------------- */
+const btnPlay=document.getElementById('btnPlay'), btnReset=document.getElementById('btnReset'),
+      scrub=document.getElementById('scrub'), timeLbl=document.getElementById('timeLbl'),
+      btnRec=document.getElementById('btnRec'), recState=document.getElementById('recState');
+let playing=false, tcur=0, lastTs=0, recorder=null;
+const chunks=[];
+function setPlaying(p){ playing=p; btnPlay.innerHTML=p?'&#10074;&#10074; Pause':'&#9654; Play'; }
+btnPlay.addEventListener('click',()=>{ if(!playing&&tcur>=DUR)tcur=0; setPlaying(!playing); });
+btnReset.addEventListener('click',()=>{ setPlaying(false); tcur=0; });
+scrub.addEventListener('input',e=>{ tcur=e.target.value/100; });
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&e.target===document.body){
+    e.preventDefault();
+    if(!playing&&tcur>=DUR)tcur=0; setPlaying(!playing);
+  }
+});
+let lastErr='';
+function showErr(e){
+  const msg=(e&&e.message)?(e.message+' @ '+(e.lineno||'?')):String(e);
+  if(msg===lastErr)return;
+  lastErr=msg;
+  recState.textContent='ERR';
+  document.getElementById('hdr').textContent='ERROR: '+msg;
+  console.error(msg,e);
+}
+window.addEventListener('error',ev=>showErr(ev.error||ev.message));
+window.addEventListener('unhandledrejection',ev=>showErr(ev.reason));
+function loop(ts){
+  try{
+    if(lastTs&&playing){
+      tcur+=Math.min(.1,(ts-lastTs)/1000);
+      if(tcur>=DUR){ tcur=DUR; setPlaying(false); stopRec(); }
+    }
+    lastTs=ts;
+    render(tcur);
+    scrub.value=Math.round(tcur*100);
+    timeLbl.textContent=fmt(tcur)+' / '+fmt(DUR);
+  }catch(err){ showErr(err); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+/* ---------------- local recording (MP4 first, webm fallback) ------------- */
+function stopRec(){ try{ if(recorder&&recorder.state!=='inactive')recorder.stop(); }catch(err){} }
+btnRec.addEventListener('click',()=>{
+  if(recorder){ stopRec(); return; }
+  if(!cv.captureStream||typeof MediaRecorder==='undefined'){ recState.textContent='N/A'; return; }
+  const stream=cv.captureStream(60);
+  const mimes=['video/mp4;codecs=avc1.640034','video/mp4;codecs=avc1.640028','video/mp4;codecs=avc1.42E01E','video/mp4',
+               'video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  let mime='';
+  for(const m of mimes){ if(MediaRecorder.isTypeSupported(m)){ mime=m; break; } }
+  const bps=W>=3840?60000000:(W>=2560?30000000:20000000);
+  chunks.length=0;
+  try{ recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:bps}:{videoBitsPerSecond:bps}); }
+  catch(err){ recState.textContent='ERR'; return; }
+  recorder.ondataavailable=e=>{ if(e.data&&e.data.size)chunks.push(e.data); };
+  recorder.onstop=()=>{
+    const blob=new Blob(chunks,{type:mime||'video/webm'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const ext=(mime||'').indexOf('mp4')>=0?'mp4':'webm';
+    a.href=url; a.download='nepal_map_intro_1080p.'+ext;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },600);
+    recorder=null;
+    btnRec.classList.remove('rec-on');
+    btnRec.innerHTML='&#9679; Record';
+    recState.textContent='Saved'; recState.classList.remove('blink');
+  };
+  tcur=0; setPlaying(true);
+  recorder.start();
+  btnRec.classList.add('rec-on');
+  btnRec.innerHTML='&#9632; Stop';
+  recState.textContent='REC'; recState.classList.add('blink');
+});
+</script>
+</body>
+</html>
+
+
+

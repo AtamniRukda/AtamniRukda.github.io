@@ -1,0 +1,640 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>India - Neon Map Intro 1080p (Video Generator)</title>
+<style>
+  html,body{margin:0;padding:0;background:#080604;color:#d8ccc0;font-family:Georgia,serif;}
+  body{display:flex;flex-direction:column;align-items:center;min-height:100vh;}
+  #hdr{margin:10px 0 6px;font-size:14px;letter-spacing:3px;text-transform:uppercase;color:#a8845c;}
+  #stage{line-height:0;}
+  canvas{width:min(92vw,calc(76vh*1.7778));height:auto;background:#000;box-shadow:0 10px 44px rgba(0,0,0,.75);}
+  #bar{display:flex;align-items:center;gap:8px;width:min(92vw,1000px);margin:10px 0 18px;
+       background:#161009;border:1px solid #3a2c1c;border-radius:10px;padding:10px 12px;}
+  button{font-family:Georgia,serif;font-size:14px;padding:7px 14px;border-radius:7px;cursor:pointer;
+         background:#241a10;color:#e8dcc8;border:1px solid #4a3822;}
+  button:hover{background:#302416;}
+  button.rec-on{background:#5a1712;border-color:#8a2f24;color:#ffd9cf;}
+  input[type=range]{flex:1;accent-color:#ffa227;}
+  #timeLbl{font-size:13px;color:#b09878;min-width:96px;text-align:center;}
+  #recState{font-size:12px;color:#ff6f61;min-width:48px;letter-spacing:2px;}
+  .blink{animation:bl 1s steps(2) infinite;}
+  @keyframes bl{50%{opacity:.15;}}
+</style>
+</head>
+<body>
+<div id="hdr">India &middot; neon map intro &middot; 1080p &middot; cinematic camera &middot; video generator</div>
+<div id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+<div id="bar">
+  <button id="btnPlay">&#9654; Play</button>
+  <button id="btnReset">Reset</button>
+  <input id="scrub" type="range" min="0" max="800" step="1" value="0">
+  <span id="timeLbl">0:00 / 0:08</span>
+  <button id="btnRec">&#9679; Record</button>
+  <span id="recState"></span>
+</div>
+<script>
+'use strict';
+/* ============================================================
+   INDIA - NEON MAP INTRO (8s, 1920x1080)
+   dark grunge world surface -> neon saffron outline draws with
+   electric particles -> textured India flag fill (tricolor +
+   Ashoka Chakra) wipes in. dynamic camera: push, drift, rotate,
+   hero detail, settle. no text on screen. pure function of t.
+   ============================================================ */
+const W = 1920, H = 1080, DUR = 8;
+const RES = W / 1920;                 /* resolution scale factor */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const TAU = Math.PI * 2;
+const NEON='#ffa227', NEON_CORE='#ffe3bd';
+const clamp=(v,a,b)=> v<a?a : v>b?b : v;
+const lerp=(a,b,u)=> a+(b-a)*u;
+const seg=(t,a,b)=> b<=a ? (t>=b?1:0) : clamp((t-a)/(b-a),0,1);
+const easeIO=u=>{ u=clamp(u,0,1); return u<.5 ? 4*u*u*u : 1-Math.pow(-2*u+2,3)/2; };
+function hash(n){ const s=Math.sin(n*127.1+311.7)*43758.5453; return s-Math.floor(s); }
+function fmt(s){ s=Math.max(0,s); const m=Math.floor(s/60), ss=Math.floor(s%60); return m+':'+String(ss).padStart(2,'0'); }
+
+/* ---------------- india border polygon (lon,lat) ----------------
+   real border data (Natural-Earth-derived, DP-simplified):
+   mainland ring - Kanyakumari to Kashmir, Gujarat to Arunachal. */
+const IND=[
+[76.841,35.675],[76.770,35.657],[76.756,35.518],[76.800,35.521],[76.842,35.398],
+[76.981,35.361],[76.991,35.207],[77.088,35.170],[77.117,35.056],[77.010,35.028],
+[77.007,34.947],[76.866,34.973],[76.749,34.932],[76.685,34.757],[76.476,34.791],
+[76.168,34.642],[76.040,34.670],[75.745,34.518],[75.372,34.557],[75.255,34.648],
+[74.670,34.699],[74.578,34.773],[74.372,34.805],[73.934,34.647],[73.946,34.571],
+[73.748,34.346],[73.912,34.351],[73.974,34.271],[73.891,34.045],[73.917,34.013],
+[74.202,34.040],[74.265,33.942],[74.229,33.873],[74.055,33.816],[73.956,33.724],
+[73.972,33.642],[74.184,33.458],[74.180,33.353],[74.086,33.262],[74.026,33.264],
+[74.016,33.192],[74.133,33.150],[74.169,33.074],[74.316,33.029],[74.351,32.982],
+[74.317,32.930],[74.416,32.900],[74.460,32.777],[74.640,32.754],[74.649,32.824],
+[74.702,32.843],[74.658,32.703],[74.696,32.660],[74.636,32.612],[74.685,32.491],
+[74.982,32.445],[75.082,32.483],[75.318,32.346],[75.379,32.230],[75.313,32.216],
+[75.315,32.161],[75.229,32.087],[75.195,32.115],[75.166,32.069],[74.864,32.044],
+[74.809,31.959],[74.601,31.882],[74.552,31.752],[74.476,31.719],[74.618,31.566],
+[74.585,31.499],[74.660,31.426],[74.556,31.357],[74.516,31.134],[74.552,31.086],
+[74.596,31.134],[74.692,31.127],[74.704,31.089],[74.566,31.047],[74.545,30.987],
+[74.373,30.892],[74.263,30.775],[74.284,30.734],[74.100,30.615],[74.067,30.516],
+[73.937,30.465],[73.975,30.445],[73.882,30.361],[73.974,30.200],[73.809,30.068],
+[73.396,29.944],[73.283,29.575],[72.946,29.029],[72.403,28.785],[72.300,28.674],
+[72.205,28.394],[71.929,28.126],[71.899,27.960],[71.662,27.876],[71.207,27.837],
+[70.867,27.704],[70.760,27.716],[70.593,28.009],[70.372,28.009],[70.133,27.811],
+[70.028,27.563],[69.589,27.187],[69.516,27.009],[69.515,26.746],[69.788,26.597],
+[70.038,26.602],[70.172,26.554],[70.175,26.254],[70.085,26.080],[70.104,25.940],
+[70.266,25.718],[70.388,25.677],[70.639,25.715],[70.672,25.679],[70.664,25.400],
+[70.885,25.150],[70.950,24.923],[71.104,24.681],[70.977,24.586],[71.016,24.460],
+[71.125,24.400],[70.986,24.369],[70.869,24.293],[70.909,24.262],[70.688,24.222],
+[70.574,24.248],[70.571,24.422],[70.111,24.295],[70.028,24.172],[69.732,24.171],
+[69.596,24.292],[69.195,24.238],[69.094,24.274],[69.013,24.226],[68.944,24.303],
+[68.858,24.211],[68.827,24.319],[68.766,24.296],[68.747,23.970],[68.294,23.942],
+[68.214,23.873],[68.114,23.541],[68.378,23.452],[68.659,23.130],[69.280,22.794],
+[69.703,22.708],[69.807,22.819],[70.178,22.928],[70.323,22.847],[70.137,22.568],
+[70.010,22.629],[69.933,22.617],[69.840,22.500],[69.568,22.469],[69.538,22.411],
+[69.359,22.429],[69.379,22.535],[69.310,22.543],[69.288,22.337],[69.200,22.307],
+[69.222,22.449],[69.126,22.515],[69.016,22.485],[68.917,22.373],[68.912,22.251],
+[70.172,21.010],[70.582,20.756],[70.821,20.669],[70.999,20.679],[71.952,21.077],
+[72.128,21.197],[72.112,21.248],[72.309,21.581],[72.372,21.594],[72.301,21.703],
+[72.287,21.861],[72.383,21.948],[72.545,21.846],[72.504,21.668],[72.625,21.486],
+[72.578,21.376],[72.595,21.056],[72.694,21.026],[72.842,20.679],[72.850,20.533],
+[72.757,20.378],[72.691,20.020],[72.611,19.842],[72.666,19.774],[72.795,19.085],
+[72.746,18.974],[72.787,18.860],[72.870,18.860],[72.831,18.675],[72.905,18.188],
+[73.089,17.757],[73.087,17.592],[73.158,17.471],[73.147,17.309],[73.238,17.125],
+[73.293,16.539],[73.463,15.932],[73.556,15.877],[73.647,15.721],[73.751,15.342],
+[73.919,15.221],[73.891,15.096],[74.078,14.865],[74.081,14.743],[74.232,14.693],
+[74.339,14.475],[74.474,13.993],[74.570,13.899],[74.762,12.964],[75.045,12.276],
+[75.168,12.007],[75.490,11.701],[75.597,11.458],[75.688,11.391],[76.193,9.939],
+[76.278,9.482],[76.509,8.915],[76.869,8.456],[77.245,8.133],[77.550,8.057],
+[78.072,8.334],[78.151,8.464],[78.159,8.652],[78.247,8.706],[78.201,8.874],
+[78.360,9.026],[78.918,9.232],[79.052,9.232],[79.000,9.208],[79.055,9.175],
+[79.264,9.216],[79.470,9.140],[79.368,9.314],[79.099,9.316],[78.934,9.446],
+[79.022,9.693],[79.302,10.039],[79.253,10.123],[79.310,10.220],[79.412,10.288],
+[79.821,10.245],[79.909,10.291],[79.865,10.615],[79.890,11.114],[79.788,11.636],
+[79.934,12.096],[80.156,12.410],[80.376,13.232],[80.156,14.179],[80.217,14.576],
+[80.121,14.780],[80.079,15.077],[80.118,15.292],[80.313,15.708],[80.593,15.837],
+[80.730,15.835],[80.821,15.671],[81.046,15.747],[81.027,15.805],[81.280,16.244],
+[81.450,16.318],[81.700,16.286],[82.321,16.536],[82.397,16.736],[82.386,16.946],
+[82.332,17.036],[82.477,17.172],[83.243,17.573],[83.628,18.023],[84.131,18.279],
+[84.471,18.649],[84.869,19.197],[85.625,19.710],[86.429,19.975],[86.585,20.193],
+[86.810,20.328],[86.836,20.410],[86.800,20.520],[87.127,20.763],[87.027,20.759],
+[87.028,20.833],[86.983,20.847],[86.829,21.174],[86.999,21.399],[87.203,21.531],
+[87.370,21.537],[87.816,21.689],[88.202,22.083],[88.027,21.687],[88.068,21.615],
+[88.169,21.671],[88.170,21.559],[88.199,21.597],[88.300,21.557],[88.358,21.677],
+[88.403,21.588],[88.458,21.613],[88.483,21.779],[88.520,21.673],[88.474,21.543],
+[88.570,21.553],[88.679,21.912],[88.641,21.940],[88.706,21.934],[88.678,21.682],
+[88.721,21.568],[88.791,21.574],[88.796,21.631],[88.850,21.546],[88.907,21.543],
+[88.876,21.633],[88.974,21.594],[89.143,21.614],[89.023,21.795],[89.015,21.905],
+[89.082,21.934],[89.091,22.017],[89.038,22.097],[89.093,22.157],[88.989,22.293],
+[89.020,22.295],[88.971,22.410],[89.000,22.429],[88.925,22.654],[88.963,22.694],
+[88.917,22.734],[88.959,22.858],[88.842,23.008],[88.882,23.004],[88.861,23.078],
+[88.994,23.210],[88.719,23.252],[88.790,23.502],[88.753,23.467],[88.553,23.647],
+[88.576,23.860],[88.739,23.921],[88.752,24.029],[88.698,24.154],[88.743,24.228],
+[88.677,24.321],[88.493,24.322],[88.135,24.505],[88.011,24.669],[88.162,24.856],
+[88.143,24.938],[88.225,24.959],[88.267,24.882],[88.341,24.868],[88.458,25.084],
+[88.439,25.200],[88.806,25.173],[88.841,25.212],[88.926,25.167],[88.948,25.254],
+[89.005,25.269],[89.005,25.305],[88.836,25.371],[88.812,25.525],[88.702,25.473],
+[88.541,25.509],[88.506,25.587],[88.451,25.597],[88.455,25.667],[88.265,25.811],
+[88.148,25.779],[88.100,25.829],[88.089,25.923],[88.173,26.031],[88.181,26.157],
+[88.353,26.224],[88.353,26.288],[88.460,26.374],[88.523,26.365],[88.486,26.463],
+[88.367,26.485],[88.356,26.448],[88.334,26.488],[88.419,26.639],[88.440,26.539],
+[88.556,26.461],[88.624,26.473],[88.705,26.335],[88.743,26.347],[88.676,26.322],
+[88.707,26.289],[88.668,26.264],[88.791,26.310],[88.847,26.231],[88.880,26.287],
+[89.051,26.242],[89.061,26.294],[88.994,26.293],[88.906,26.403],[88.957,26.458],
+[89.093,26.393],[89.155,26.139],[89.345,26.011],[89.423,26.045],[89.578,25.971],
+[89.583,26.035],[89.651,26.064],[89.594,26.099],[89.628,26.118],[89.595,26.159],
+[89.648,26.165],[89.634,26.227],[89.678,26.237],[89.681,26.164],[89.740,26.153],
+[89.867,25.930],[89.807,25.838],[89.864,25.605],[89.815,25.357],[89.844,25.290],
+[89.956,25.297],[90.445,25.143],[91.240,25.200],[91.626,25.133],[92.055,25.186],
+[92.388,25.037],[92.488,24.916],[92.473,24.865],[92.268,24.909],[92.130,24.401],
+[91.918,24.328],[91.893,24.142],[91.817,24.236],[91.759,24.239],[91.709,24.145],
+[91.657,24.226],[91.643,24.134],[91.583,24.096],[91.369,24.100],[91.355,23.997],
+[91.253,23.953],[91.248,23.829],[91.164,23.740],[91.205,23.677],[91.164,23.671],
+[91.214,23.500],[91.317,23.358],[91.344,23.091],[91.405,23.072],[91.405,23.271],
+[91.623,22.947],[91.825,23.116],[91.764,23.250],[91.822,23.386],[91.939,23.456],
+[91.947,23.726],[92.062,23.648],[92.189,23.730],[92.229,23.654],[92.277,23.720],
+[92.389,23.317],[92.349,23.192],[92.381,22.959],[92.527,22.706],[92.606,21.975],
+[92.686,22.037],[92.715,22.161],[92.878,22.033],[92.896,21.955],[92.948,22.028],
+[93.006,22.002],[92.988,22.063],[93.053,22.120],[93.051,22.208],[93.163,22.189],
+[93.146,22.246],[93.200,22.260],[93.185,22.421],[93.109,22.525],[93.139,22.584],
+[93.095,22.805],[93.127,22.905],[93.168,22.907],[93.123,23.019],[93.142,23.058],
+[93.295,23.010],[93.385,23.145],[93.359,23.354],[93.399,23.386],[93.437,23.677],
+[93.334,24.085],[93.402,24.079],[93.510,23.950],[93.617,24.009],[93.760,23.999],
+[93.820,23.927],[93.934,23.946],[94.154,23.846],[94.323,24.327],[94.399,24.408],
+[94.386,24.481],[94.515,24.600],[94.554,24.703],[94.609,24.713],[94.741,25.003],
+[94.734,25.132],[94.577,25.210],[94.636,25.397],[94.894,25.566],[94.925,25.655],
+[95.040,25.736],[95.030,25.933],[95.186,26.070],[95.124,26.107],[95.133,26.381],
+[95.063,26.452],[95.154,26.613],[95.242,26.681],[95.298,26.652],[95.427,26.704],
+[95.537,26.827],[95.606,26.814],[95.676,26.902],[95.720,26.885],[95.808,27.009],
+[95.950,27.058],[96.099,27.220],[96.578,27.307],[96.612,27.364],[96.669,27.329],
+[96.709,27.374],[96.791,27.355],[96.904,27.175],[97.145,27.093],[97.173,27.136],
+[96.915,27.463],[96.898,27.607],[97.303,27.916],[97.364,27.874],[97.396,28.013],
+[97.316,28.066],[97.361,28.204],[97.132,28.358],[96.971,28.330],[96.762,28.560],
+[96.606,28.611],[96.514,28.535],[96.496,28.429],[96.479,28.488],[96.411,28.510],
+[96.487,28.556],[96.450,28.589],[96.534,28.688],[96.625,28.732],[96.509,28.946],
+[96.470,28.932],[96.369,29.038],[96.360,29.109],[96.259,29.095],[96.205,29.023],
+[96.185,29.110],[96.303,29.158],[96.299,29.195],[96.059,29.381],[95.871,29.315],
+[95.841,29.352],[95.740,29.297],[95.740,29.219],[95.600,29.232],[95.602,29.189],
+[95.508,29.192],[95.511,29.128],[95.427,29.187],[95.411,29.127],[95.300,29.135],
+[95.268,29.067],[94.992,29.171],[95.022,29.123],[94.883,29.187],[94.811,29.165],
+[94.688,29.319],[94.559,29.229],[94.301,29.152],[94.272,29.111],[94.370,29.029],
+[94.261,28.932],[94.169,28.936],[94.020,28.843],[94.020,28.794],[93.983,28.824],
+[93.914,28.741],[93.800,28.739],[93.711,28.663],[93.446,28.662],[93.336,28.609],
+[93.178,28.484],[93.142,28.367],[92.935,28.256],[92.937,28.208],[92.681,28.150],
+[92.655,28.078],[92.723,28.065],[92.734,27.983],[92.455,27.797],[92.429,27.834],
+[92.322,27.800],[92.258,27.886],[91.920,27.722],[91.644,27.761],[91.564,27.649],
+[91.585,27.552],[91.663,27.483],[92.015,27.477],[92.120,27.288],[92.043,27.262],
+[92.039,27.057],[92.118,26.953],[92.101,26.863],[92.053,26.849],[91.892,26.918],
+[91.719,26.811],[91.502,26.790],[91.414,26.838],[91.327,26.784],[91.096,26.814],
+[90.737,26.774],[90.555,26.808],[90.427,26.901],[90.222,26.853],[90.196,26.777],
+[89.868,26.737],[89.863,26.704],[89.620,26.730],[89.650,26.773],[89.360,26.857],
+[89.131,26.814],[89.081,26.896],[88.943,26.938],[88.947,26.980],[88.885,26.950],
+[88.875,27.106],[88.749,27.142],[88.921,27.327],[88.782,27.458],[88.763,27.564],
+[88.853,27.673],[88.885,27.850],[88.837,28.013],[88.640,28.120],[88.396,27.974],
+[88.139,27.963],[88.135,27.882],[88.201,27.849],[88.038,27.483],[88.065,27.334],
+[87.988,27.114],[88.141,26.983],[88.190,26.741],[88.032,26.360],[87.888,26.471],
+[87.595,26.382],[87.447,26.435],[87.361,26.413],[87.352,26.350],[87.090,26.452],
+[87.052,26.586],[86.743,26.423],[86.343,26.620],[86.233,26.591],[86.034,26.663],
+[85.853,26.563],[85.851,26.609],[85.732,26.668],[85.708,26.830],[85.629,26.873],
+[85.335,26.744],[85.209,26.758],[85.195,26.868],[85.029,26.856],[85.058,26.885],
+[84.998,26.891],[84.961,26.959],[84.640,27.055],[84.692,27.217],[84.619,27.338],
+[84.290,27.389],[84.150,27.516],[84.030,27.436],[83.849,27.439],[83.856,27.349],
+[83.621,27.471],[83.389,27.480],[83.386,27.383],[83.302,27.333],[83.186,27.455],
+[82.734,27.506],[82.757,27.587],[82.706,27.719],[82.411,27.693],[82.066,27.924],
+[81.966,27.930],[81.888,27.860],[81.476,28.084],[81.447,28.156],[81.383,28.176],
+[81.318,28.131],[81.193,28.370],[80.949,28.439],[80.542,28.692],[80.501,28.663],
+[80.516,28.548],[80.263,28.753],[80.070,28.825],[80.061,28.916],[80.137,29.074],
+[80.180,29.132],[80.276,29.140],[80.244,29.201],[80.291,29.195],[80.314,29.310],
+[80.243,29.442],[80.303,29.453],[80.408,29.612],[80.366,29.742],[80.483,29.797],
+[80.611,29.960],[80.741,30.003],[80.918,30.226],[80.934,30.180],[81.035,30.198],
+[81.023,30.251],[80.804,30.320],[80.607,30.465],[80.541,30.449],[80.214,30.579],
+[80.186,30.678],[80.236,30.699],[80.239,30.771],[79.926,30.880],[79.871,30.974],
+[79.747,31.004],[79.601,30.940],[79.511,31.032],[79.431,31.020],[79.411,31.111],
+[79.313,31.146],[79.288,31.239],[79.231,31.257],[79.235,31.340],[79.130,31.438],
+[79.016,31.422],[79.022,31.349],[78.945,31.360],[78.896,31.287],[78.791,31.306],
+[78.75,31.385],[78.794,31.443],[78.729,31.533],[78.842,31.619],[78.801,31.684],
+[78.751,31.679],[78.703,31.792],[78.779,31.987],[78.490,32.277],[78.457,32.462],
+[78.397,32.532],[78.522,32.609],[78.642,32.606],[78.635,32.642],[78.754,32.694],
+[78.782,32.481],[78.974,32.337],[79.102,32.371],[79.130,32.468],[79.306,32.599],
+[79.266,32.674],[79.294,32.727],[79.261,32.791],[79.222,32.782],[79.238,32.941],
+[79.141,33.027],[79.154,33.185],[78.941,33.383],[78.839,33.421],[78.738,33.568],
+[78.755,33.628],[78.681,33.653],[78.775,33.730],[78.738,34.012],[78.655,34.032],
+[78.666,34.087],[78.863,34.165],[78.905,34.144],[78.981,34.314],[79.058,34.295],
+[79.051,34.324],[78.740,34.457],[78.707,34.525],[78.560,34.512],[78.551,34.570],
+[78.436,34.542],[78.426,34.591],[78.287,34.615],[78.186,34.800],[78.236,34.879],
+[78.176,34.937],[78.208,34.958],[78.002,35.237],[78.021,35.358],[78.109,35.486],
+[77.929,35.502],[77.911,35.462],[77.818,35.517],[77.676,35.454],[77.660,35.490],
+[77.429,35.463],[77.311,35.541],[77.198,35.523],[76.882,35.637]];
+/* project to world pixels (equirectangular, lon scaled by cos mid-lat) */
+let _lo1=1e9,_lo2=-1e9,_la1=1e9,_la2=-1e9;
+IND.forEach(p=>{ _lo1=Math.min(_lo1,p[0]); _lo2=Math.max(_lo2,p[0]);
+                 _la1=Math.min(_la1,p[1]); _la2=Math.max(_la2,p[1]); });
+const LONMIN=_lo1,LONMAX=_lo2,LATMIN=_la1,LATMAX=_la2,MIDLAT=(_la1+_la2)/2;
+const KX=Math.cos(MIDLAT*Math.PI/180);
+const MAPS=(880*RES)/(_la2-_la1);    /* fit map height ~81% of frame */
+const MAPW=(LONMAX-LONMIN)*KX*MAPS, MAPH=(LATMAX-LATMIN)*MAPS;
+const PX=IND.map(p=>[ (p[0]-LONMIN)*KX*MAPS, (LATMAX-p[1])*MAPS ]);
+let BB={x:1e9,y:1e9,x2:-1e9,y2:-1e9};
+PX.forEach(p=>{ BB.x=Math.min(BB.x,p[0]); BB.y=Math.min(BB.y,p[1]);
+                BB.x2=Math.max(BB.x2,p[0]); BB.y2=Math.max(BB.y2,p[1]); });
+const MAPCX=(BB.x+BB.x2)/2, MAPCY=(BB.y+BB.y2)/2;
+/* cumulative lengths for progressive draw */
+const SEGL=[]; let PERIM=0;
+for(let i=0;i<PX.length;i++){
+  const a=PX[i], b=PX[(i+1)%PX.length];
+  const l=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  SEGL.push(l); PERIM+=l;
+}
+function pathUpTo(g,frac){
+  let rem=frac*PERIM;
+  g.moveTo(PX[0][0],PX[0][1]);
+  let head=[PX[0][0],PX[0][1]];
+  for(let i=0;i<PX.length;i++){
+    const l=SEGL[i];
+    if(rem>=l){ g.lineTo(PX[(i+1)%PX.length][0],PX[(i+1)%PX.length][1]);
+      head=PX[(i+1)%PX.length]; rem-=l; }
+    else{ const f=l>0?rem/l:0;
+      const hx=lerp(PX[i][0],PX[(i+1)%PX.length][0],f);
+      const hy=lerp(PX[i][1],PX[(i+1)%PX.length][1],f);
+      g.lineTo(hx,hy); head=[hx,hy]; rem=0; break; }
+  }
+  return head;
+}
+function pathAll(g){ g.moveTo(PX[0][0],PX[0][1]);
+  for(let i=1;i<PX.length;i++) g.lineTo(PX[i][0],PX[i][1]); g.closePath(); }
+
+/* ---------------- camera keyframes [t, zoom, cxF, cyF, rotDeg] ----------------
+   cx/cy are fractions of map height (resolution-independent) */
+const CAMK=[
+ [0.0,0.94, 0.00, 0.03,  0.0],
+ [2.0,1.12,-0.16, 0.10, -2.2],
+ [4.6,1.30,-0.10,-0.34,  2.4],
+ [5.6,1.02, 0.00, 0.01,  0.0],
+ [7.0,1.25, 0.03, 0.02, -1.6],
+ [8.0,1.08, 0.00, 0.00,  0.0]
+];
+function camera(t){
+  let a=CAMK[0], b=CAMK[CAMK.length-1];
+  for(let i=0;i<CAMK.length-1;i++){
+    if(t>=CAMK[i][0]&&t<=CAMK[i+1][0]){ a=CAMK[i]; b=CAMK[i+1]; break; }
+  }
+  const u=easeIO((t-a[0])/Math.max(.0001,b[0]-a[0]));
+  const fl=Math.sin(t*.5)*6*RES+Math.sin(t*1.3)*2*RES;
+  return { z:lerp(a[1],b[1],u),
+           cx:lerp(a[2],b[2],u)*MAPH+fl,
+           cy:lerp(a[3],b[3],u)*MAPH+Math.cos(t*.37)*5*RES,
+           rot:(lerp(a[4],b[4],u)+Math.sin(t*.23)*.14)*Math.PI/180 };
+}
+/* ---------------- grunge world backdrop (offscreen, drawn once) ---------------- */
+const BGW=Math.round(W*1.5),BGH=Math.round(H*1.5);
+const bg=document.createElement('canvas'); bg.width=BGW; bg.height=BGH;
+(function(){
+  const g=bg.getContext('2d');
+  g.fillStyle='#0a0806'; g.fillRect(0,0,BGW,BGH);
+  /* mottled grunge */
+  for(let i=0;i<4200;i++){
+    const x=hash(i*3+1)*BGW, y=hash(i*3+2)*BGH, r=8+hash(i*3+3)*70;
+    g.globalAlpha=.015+hash(i*7)*.04;
+    g.fillStyle=hash(i*11)>.5?'#000':'#241a10';
+    g.beginPath(); g.ellipse(x,y,r,r*.6,hash(i)*TAU,0,TAU); g.fill();
+  }
+  /* faint continents (very rough blobs, barely visible) */
+  function blob(pts){
+    g.beginPath();
+    pts.forEach((p,i)=>{ const x=(p[0]+180)*(BGW/360), y=(84-p[1])*(BGH/144);
+      if(i===0)g.moveTo(x,y); else g.lineTo(x,y); });
+    g.closePath(); g.fill();
+  }
+  g.fillStyle='rgba(150,125,95,.055)';
+  blob([[-168,66],[-140,70],[-120,72],[-95,73],[-75,70],[-60,62],[-55,50],[-65,44],
+        [-75,35],[-81,25],[-97,25],[-105,20],[-115,30],[-125,40],[-130,55],[-150,60]]);
+  blob([[-80,10],[-60,12],[-50,0],[-35,-8],[-40,-22],[-58,-35],[-70,-52],[-75,-40],
+        [-70,-18],[-80,0]]);
+  blob([[-10,36],[3,43],[12,44],[20,40],[28,41],[38,48],[30,60],[20,66],[10,64],[0,58],[-8,52]]);
+  blob([[-17,15],[-10,32],[0,36],[12,34],[25,32],[35,30],[43,12],[52,12],[42,-5],
+        [35,-25],[25,-34],[18,-34],[12,-18],[8,4],[-8,5]]);
+  blob([[30,60],[40,66],[60,70],[80,72],[100,75],[120,72],[140,70],[160,66],[170,62],
+        [160,58],[142,50],[130,42],[122,30],[110,18],[100,10],[95,15],[88,20],[80,12],
+        [72,20],[62,24],[55,26],[48,30],[40,38],[32,45]]);
+  blob([[35,30],[45,28],[55,25],[58,20],[52,15],[43,12],[38,20]]);
+  blob([[114,-22],[122,-14],[132,-11],[142,-11],[150,-22],[153,-30],[146,-39],
+        [135,-35],[125,-33],[115,-30]]);
+  blob([[-45,60],[-30,68],[-22,76],[-40,80],[-55,76],[-52,66]]);
+  /* graticule */
+  g.globalAlpha=1;
+  g.strokeStyle='rgba(190,160,120,.045)'; g.lineWidth=RES;
+  const step=120*RES;
+  for(let x=0;x<=BGW;x+=step){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,BGH); g.stroke(); }
+  for(let y=0;y<=BGH;y+=step){ g.beginPath(); g.moveTo(0,y); g.lineTo(BGW,y); g.stroke(); }
+  /* scratches */
+  g.strokeStyle='rgba(0,0,0,.10)'; g.lineWidth=1.2*RES;
+  for(let i=0;i<140;i++){
+    const x=hash(i*13+4)*BGW,y=hash(i*13+5)*BGH,a=hash(i*13+6)*TAU,l=(40+hash(i*13+7)*160)*RES;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+Math.cos(a)*l,y+Math.sin(a)*l); g.stroke();
+  }
+})();
+/* ---------------- textured flag (offscreen, drawn once) ---------------- */
+const PAD=40*RES;
+const FW=Math.ceil(BB.x2-BB.x)+PAD*2, FH=Math.ceil(BB.y2-BB.y)+PAD*2;
+const flag=document.createElement('canvas'); flag.width=FW; flag.height=FH;
+(function(){
+  const g=flag.getContext('2d');
+  const gx=PAD, gy=PAD, gw=FW-PAD*2, gh=FH-PAD*2;
+  const third=gh/3;
+  /* tricolor bands */
+  g.fillStyle='#f59331'; g.fillRect(gx,gy,gw,third);                 /* saffron */
+  g.fillStyle='#f2efe4'; g.fillRect(gx,gy+third,gw,third);           /* white   */
+  g.fillStyle='#0f7a10'; g.fillRect(gx,gy+2*third,gw,third);         /* green   */
+  /* soft band blend */
+  g.fillStyle='rgba(255,255,255,.05)';
+  g.fillRect(gx,gy+third-2*RES,gw,4*RES);
+  /* Ashoka Chakra */
+  const cx=gx+gw/2, cy=gy+third+third/2, R=third*.375;
+  g.strokeStyle='#06038d'; g.fillStyle='#06038d';
+  g.lineWidth=R*.085;
+  g.beginPath(); g.arc(cx,cy,R,0,TAU); g.stroke();
+  g.lineWidth=R*.045;
+  for(let i=0;i<24;i++){
+    const a=i*TAU/24;
+    g.beginPath(); g.moveTo(cx+Math.cos(a)*R*.13,cy+Math.sin(a)*R*.13);
+    g.lineTo(cx+Math.cos(a)*R*.94,cy+Math.sin(a)*R*.94); g.stroke();
+  }
+  g.beginPath(); g.arc(cx,cy,R*.14,0,TAU); g.fill();
+  /* fabric folds */
+  for(let i=0;i<10;i++){
+    const fx=gx+gw*(i+.5)/10, w=64*RES;
+    const fg=g.createLinearGradient(fx-w,0,fx+w,0);
+    fg.addColorStop(0,'rgba(0,0,0,0)'); fg.addColorStop(.5,'rgba(0,0,0,.14)');
+    fg.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=fg; g.fillRect(fx-w,gy,w*2,gh);
+  }
+  /* grunge blotches */
+  for(let i=0;i<2100;i++){
+    const x=gx+hash(i*5+11)*gw, y=gy+hash(i*5+12)*gh, r=(2+hash(i*5+13)*26)*RES;
+    g.globalAlpha=.02+hash(i*5+14)*.06;
+    g.fillStyle=hash(i*5+15)>.35?'rgba(0,0,0,1)':'rgba(245,240,225,1)';
+    g.beginPath(); g.ellipse(x,y,r,r*.55,hash(i*5+16)*TAU,0,TAU); g.fill();
+  }
+  g.globalAlpha=1;
+  /* edge wear */
+  g.strokeStyle='rgba(0,0,0,.25)'; g.lineWidth=3*RES;
+  g.strokeRect(gx+1.5*RES,gy+1.5*RES,gw-3*RES,gh-3*RES);
+})();
+/* ---------------- grain ---------------- */
+let grainPat=null;
+(function(){ const g=document.createElement('canvas'); g.width=g.height=256;
+  const gc=g.getContext('2d');
+  for(let i=0;i<1700;i++){ gc.globalAlpha=.05; gc.fillStyle=hash(i)>.5?'#000':'#fff';
+    gc.fillRect(hash(i+9)*256,hash(i+77)*256,1.5,1.5); }
+  grainPat=ctx.createPattern(g,'repeat');
+})();
+/* ---------------- neon stroke helper (layered, Path2D-based) ------------- */
+function neonStroke(path,widthCore){
+  const wc=widthCore||2.4*RES;
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.strokeStyle='rgba(255,162,39,.14)'; ctx.lineWidth=wc+14*RES; ctx.stroke(path);
+  ctx.strokeStyle='rgba(255,162,39,.40)'; ctx.lineWidth=wc+5*RES;  ctx.stroke(path);
+  ctx.strokeStyle=NEON_CORE;              ctx.lineWidth=wc;        ctx.stroke(path);
+  ctx.strokeStyle='rgba(255,246,232,.9)'; ctx.lineWidth=wc*.45;    ctx.stroke(path);
+  ctx.restore();
+}
+/* ---------------- master render ---------------- */
+function render(t){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle='#080604'; ctx.fillRect(0,0,W,H);
+  const cam=camera(t);
+  ctx.save();
+  ctx.translate(W/2,H/2); ctx.rotate(cam.rot); ctx.scale(cam.z,cam.z);
+  ctx.translate(-W/2-cam.cx,-H/2-cam.cy);
+  /* backdrop (world-sized) */
+  ctx.drawImage(bg,-(BGW-W)/2,-(BGH-H)/2);
+  /* map space */
+  ctx.save();
+  ctx.translate(W/2-MAPCX, H/2-MAPCY);
+  const drawProg=easeIO(seg(t,.5,4.4));
+  const fillProg=easeIO(seg(t,5.6,7.0));
+  /* dim under-fill so interior isn't pure void before flag */
+  if(fillProg>0){
+    ctx.save(); pathAll(ctx);
+    ctx.fillStyle='rgba(12,16,28,'+(.85*fillProg)+')'; ctx.fill();
+    ctx.restore();
+  }
+  /* flag fill with diagonal wipe (top saffron first) */
+  if(fillProg>0){
+    const d={x:.12,y:.99};
+    const dl=Math.hypot(d.x,d.y); d.x/=dl; d.y/=dl;
+    const corners=[[BB.x-PAD,BB.y-PAD],[BB.x2+PAD,BB.y-PAD],[BB.x2+PAD,BB.y2+PAD],[BB.x-PAD,BB.y2+PAD]];
+    let pmin=1e18,pmax=-1e18;
+    corners.forEach(c=>{ const p=c[0]*d.x+c[1]*d.y; pmin=Math.min(pmin,p); pmax=Math.max(pmax,p); });
+    const band=70*RES;
+    const f=lerp(pmin-60*RES,pmax+140*RES,fillProg);
+    /* masked flag */
+    const mc=render._mc||(render._mc=document.createElement('canvas'));
+    if(mc.width!==FW||mc.height!==FH){ mc.width=FW; mc.height=FH; }
+    const mg=mc.getContext('2d');
+    mg.setTransform(1,0,0,1,0,0);
+    mg.clearRect(0,0,FW,FH);
+    mg.drawImage(flag,0,0);
+    mg.globalCompositeOperation='destination-in';
+    const bx0=BB.x-PAD, by0=BB.y-PAD, base=bx0*d.x+by0*d.y;
+    const lg=mg.createLinearGradient(
+      bx0+((f-band)-base)*d.x, by0+((f-band)-base)*d.y,
+      bx0+((f+band)-base)*d.x, by0+((f+band)-base)*d.y);
+    lg.addColorStop(0,'rgba(0,0,0,1)'); lg.addColorStop(1,'rgba(0,0,0,0)');
+    mg.fillStyle=lg; mg.fillRect(0,0,FW,FH);
+    mg.globalCompositeOperation='source-over';
+    ctx.save(); pathAll(ctx); ctx.clip();
+    ctx.drawImage(mc,BB.x-PAD,BB.y-PAD);
+    /* bright leading edge */
+    if(fillProg<.995){
+      const pe={x:-d.y,y:d.x}, L=MAPW*2.2;
+      const fE=f-band;
+      const ex=bx0+(fE-base)*d.x, ey=by0+(fE-base)*d.y;
+      ctx.strokeStyle='rgba(255,162,39,'+(.30*(1-fillProg*.65))+')';
+      ctx.lineWidth=9*RES;
+      ctx.beginPath(); ctx.moveTo(ex-pe.x*L,ey-pe.y*L); ctx.lineTo(ex+pe.x*L,ey+pe.y*L);
+      ctx.stroke();
+      ctx.strokeStyle='rgba(255,235,200,'+(.75*(1-fillProg*.65))+')';
+      ctx.lineWidth=3*RES;
+      ctx.beginPath(); ctx.moveTo(ex-pe.x*L,ey-pe.y*L); ctx.lineTo(ex+pe.x*L,ey+pe.y*L);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  /* completion flash */
+  const fl=Math.max(0,1-Math.abs(t-4.5)/.55);
+  if(fl>0){
+    const fg=ctx.createRadialGradient(W/2,H/2,60*RES,W/2,H/2,760*RES);
+    fg.addColorStop(0,'rgba(255,200,130,'+(.30*fl)+')');
+    fg.addColorStop(1,'rgba(255,162,39,0)');
+    ctx.fillStyle=fg; ctx.fillRect(-800,-800,W+1600,H+1600);
+    ctx.save();
+    ctx.strokeStyle='rgba(255,210,150,'+(.55*fl)+')';
+    ctx.lineWidth=2.5*RES;
+    ctx.beginPath(); ctx.arc(W/2,H/2,760*RES*(1-fl*.6),0,TAU); ctx.stroke();
+    ctx.restore();
+  }
+  /* electric ghost crawl (after outline exists) */
+  if(drawProg>.05){
+    const ga=(.16+.10*Math.sin(t*2.2))*Math.min(1,drawProg*2);
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    ctx.strokeStyle='rgba(255,162,39,'+ga+')'; ctx.lineWidth=1.6*RES;
+    ctx.beginPath();
+    const seed=Math.floor(t*14);
+    for(let i=0;i<PX.length;i+=3){
+      const jx=(hash(i*7+seed)-.5)*4.4*RES, jy=(hash(i*7+seed+31)-.5)*4.4*RES;
+      if(i===0)ctx.moveTo(PX[0][0]+jx,PX[0][1]+jy);
+      else ctx.lineTo(PX[i][0]+jx,PX[i][1]+jy);
+    }
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
+  }
+  /* main neon outline (progressive; full path cached as Path2D) */
+  let head=null;
+  if(drawProg<1){
+    const pp=new Path2D();
+    head=pathUpTo(pp,drawProg);
+    neonStroke(pp,2.4*RES);
+  } else {
+    if(!render._fp){ render._fp=new Path2D(); pathAll(render._fp); }
+    neonStroke(render._fp,2.4*RES);
+    head=null;
+    /* random segment flickers */
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    const seed=Math.floor(t*9);
+    for(let k=0;k<6;k++){
+      const i=Math.floor(hash(k*3+seed)*PX.length);
+      const a=PX[i], b=PX[(i+1)%PX.length];
+      ctx.strokeStyle='rgba(255,224,170,'+(.25+.55*hash(k+seed*7))+')';
+      ctx.lineWidth=3*RES;
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  /* draw-head sparks */
+  if(drawProg>0&&drawProg<1&&head){
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    for(let i=0;i<18;i++){
+      const a=hash(i*17+Math.floor(t*30))*TAU;
+      const r=(3+hash(i*17+1+Math.floor(t*30))*30)*RES;
+      const px=head[0]+Math.cos(a)*r, py=head[1]+Math.sin(a)*r;
+      const al=(1-r/(34*RES))*.8;
+      ctx.fillStyle='rgba(255,230,190,'+al+')';
+      ctx.beginPath(); ctx.arc(px,py,(1.6+hash(i)*2)*RES,0,TAU); ctx.fill();
+    }
+    const hg=ctx.createRadialGradient(head[0],head[1],0,head[0],head[1],26*RES);
+    hg.addColorStop(0,'rgba(255,240,215,.95)'); hg.addColorStop(1,'rgba(255,162,39,0)');
+    ctx.fillStyle=hg;
+    ctx.beginPath(); ctx.arc(head[0],head[1],26*RES,0,TAU); ctx.fill();
+    ctx.restore();
+  }
+  /* ambient motes near border */
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<30;i++){
+    const idx=Math.floor(hash(i*29)*PX.length);
+    const ph=(t*.14+hash(i*31))%1;
+    const px=PX[idx][0]+(hash(i*37)-.5)*46*RES+Math.sin(t*.8+i)*7*RES;
+    const py=PX[idx][1]+(hash(i*41)-.5)*46*RES+Math.cos(t*.7+i*2)*7*RES;
+    ctx.fillStyle='rgba(255,162,39,'+(.30*Math.sin(ph*Math.PI))+')';
+    ctx.beginPath(); ctx.arc(px,py,1.8*RES,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+  ctx.restore(); /* map space */
+  ctx.restore(); /* camera */
+  /* vignette + grain + fades (screen space) */
+  const vg=ctx.createRadialGradient(W/2,H/2,H*.42,W/2,H/2,H*.92);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.62)');
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  if(grainPat){ ctx.save(); ctx.globalAlpha=.35; ctx.fillStyle=grainPat;
+    ctx.fillRect(0,0,W,H); ctx.restore(); }
+  const fa=Math.max(1-seg(t,0,.6),seg(t,7.5,8));
+  if(fa>0){ ctx.fillStyle='rgba(0,0,0,'+fa+')'; ctx.fillRect(0,0,W,H); }
+}
+/* ---------------- controls ---------------- */
+const btnPlay=document.getElementById('btnPlay'), btnReset=document.getElementById('btnReset'),
+      scrub=document.getElementById('scrub'), timeLbl=document.getElementById('timeLbl'),
+      btnRec=document.getElementById('btnRec'), recState=document.getElementById('recState');
+let playing=false, tcur=0, lastTs=0, recorder=null;
+const chunks=[];
+function setPlaying(p){ playing=p; btnPlay.innerHTML=p?'&#10074;&#10074; Pause':'&#9654; Play'; }
+btnPlay.addEventListener('click',()=>{ if(!playing&&tcur>=DUR)tcur=0; setPlaying(!playing); });
+btnReset.addEventListener('click',()=>{ setPlaying(false); tcur=0; });
+scrub.addEventListener('input',e=>{ tcur=e.target.value/100; });
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&e.target===document.body){
+    e.preventDefault();
+    if(!playing&&tcur>=DUR)tcur=0; setPlaying(!playing);
+  }
+});
+let lastErr='';
+function showErr(e){
+  const msg=(e&&e.message)?(e.message+' @ '+(e.lineno||'?')):String(e);
+  if(msg===lastErr)return;
+  lastErr=msg;
+  recState.textContent='ERR';
+  document.getElementById('hdr').textContent='ERROR: '+msg;
+  console.error(msg,e);
+}
+window.addEventListener('error',ev=>showErr(ev.error||ev.message));
+window.addEventListener('unhandledrejection',ev=>showErr(ev.reason));
+function loop(ts){
+  try{
+    if(lastTs&&playing){
+      tcur+=Math.min(.1,(ts-lastTs)/1000);
+      if(tcur>=DUR){ tcur=DUR; setPlaying(false); stopRec(); }
+    }
+    lastTs=ts;
+    render(tcur);
+    scrub.value=Math.round(tcur*100);
+    timeLbl.textContent=fmt(tcur)+' / '+fmt(DUR);
+  }catch(err){ showErr(err); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+/* ---------------- local recording (MP4 first, webm fallback) ------------- */
+function stopRec(){ try{ if(recorder&&recorder.state!=='inactive')recorder.stop(); }catch(err){} }
+btnRec.addEventListener('click',()=>{
+  if(recorder){ stopRec(); return; }
+  if(!cv.captureStream||typeof MediaRecorder==='undefined'){ recState.textContent='N/A'; return; }
+  const stream=cv.captureStream(60);
+  const mimes=['video/mp4;codecs=avc1.640034','video/mp4;codecs=avc1.640028','video/mp4;codecs=avc1.42E01E','video/mp4',
+               'video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  let mime='';
+  for(const m of mimes){ if(MediaRecorder.isTypeSupported(m)){ mime=m; break; } }
+  const bps=W>=3840?60000000:(W>=2560?30000000:20000000);
+  chunks.length=0;
+  try{ recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:bps}:{videoBitsPerSecond:bps}); }
+  catch(err){ recState.textContent='ERR'; return; }
+  recorder.ondataavailable=e=>{ if(e.data&&e.data.size)chunks.push(e.data); };
+  recorder.onstop=()=>{
+    const blob=new Blob(chunks,{type:mime||'video/webm'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const ext=(mime||'').indexOf('mp4')>=0?'mp4':'webm';
+    a.href=url; a.download='india_map_intro_1080p.'+ext;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },600);
+    recorder=null;
+    btnRec.classList.remove('rec-on');
+    btnRec.innerHTML='&#9679; Record';
+    recState.textContent='Saved'; recState.classList.remove('blink');
+  };
+  tcur=0; setPlaying(true);
+  recorder.start();
+  btnRec.classList.add('rec-on');
+  btnRec.innerHTML='&#9632; Stop';
+  recState.textContent='REC'; recState.classList.add('blink');
+});
+</script>
+</body>
+</html>
+
+
+
