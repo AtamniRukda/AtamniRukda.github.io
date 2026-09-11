@@ -1,4 +1,4 @@
-# Attiq ur Rehman (CmDarri) — Portfolio Website
+Attiq ur Rehman (CmDarri) — Portfolio Website
 
 A static, single-page portfolio built for Pond5 creator verification. Plain HTML, CSS, and JavaScript — no build step, no backend, no frameworks.
 
